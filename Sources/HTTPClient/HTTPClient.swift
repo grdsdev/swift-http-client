@@ -52,6 +52,9 @@ public actor HTTPClient: HTTPClientProtocol {
       }
     }
 
+    var request = request
+    request.underlyingRequest.headerFields.append(contentsOf: HTTPFields.default)
+
     let (data, response) = try await next(request.underlyingRequest)
     return try request.decode(data, response)
   }

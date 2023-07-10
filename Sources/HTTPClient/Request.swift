@@ -4,7 +4,7 @@ import HTTPTypes
 /// Represents a network request.
 public struct Request<Response: Sendable>: Sendable {
   /// The underlying HTTP request.
-  public let underlyingRequest: HTTPRequest
+  public var underlyingRequest: HTTPRequest
   /// The closure to decode the response data.
   let decode: @Sendable (Data, HTTPResponse) throws -> Response
 

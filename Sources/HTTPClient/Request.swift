@@ -26,6 +26,7 @@ extension Request where Response: Decodable {
   /// - Parameters:
   ///   - underlyingRequest: The underlying HTTP request.
   ///   - decoder: The JSON decoder to use for decoding the response data.
+  @_disfavoredOverload
   public init(_ underlyingRequest: HTTPRequest, decoder: JSONDecoder = .init()) {
     self.init(underlyingRequest) { data, _ in
       try decoder.decode(Response.self, from: data)
@@ -39,4 +40,22 @@ extension Request where Response == Void {
   public init(_ underlyingRequest: HTTPRequest) {
     self.init(underlyingRequest) { _, _ in () }
   }
+}
+
+extension Request where Response == String {
+  /// Initializes a new Request instance for String responses.
+  /// - Parameters:
+  ///   - underlyingRequest: The underlying HTTP request.
+  ///   - encoding: The String Encoding to use for decoding the response data.
+  public init(_ underlyingRequest: HTTPRequest, encoding: String.Encoding = .utf8) {
+    self.init(underlyingRequest) { data, _ in
+      guard let value = String(data: data, encoding: encoding) else {
+        throw StringEncodingError()
+      }
+      return value
+    }
+  }
+}
+
+struct StringEncodingError: Error {
 }

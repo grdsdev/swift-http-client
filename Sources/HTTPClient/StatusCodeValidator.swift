@@ -29,7 +29,7 @@ public struct StatusCodeValidator: HTTPClientInterceptor {
     let (data, response) = try await next(request)
 
     guard validation(response.status) else {
-      throw HTTPClientError.unsuccessfulStatusCode(code: response.status, body: data)
+      throw HTTPClientError.unacceptableStatusCode(code: response.status, body: data)
     }
 
     return (data, response)

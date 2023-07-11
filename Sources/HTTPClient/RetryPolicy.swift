@@ -26,12 +26,12 @@ public actor RetryPolicy: HTTPClientInterceptor {
 
   /// The default HTTP status codes to retry.
   /// See [RFC 2616 - Section 10](https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10) for more information.
-  public static let defaultRetryableHTTPStatusCodes: Set<Int> = [
-    408,  // [Request Timeout](https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.4.9)
-    500,  // [Internal Server Error](https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.5.1)
-    502,  // [Bad Gateway](https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.5.3)
-    503,  // [Service Unavailable](https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.5.4)
-    504,  // [Gateway Timeout](https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.5.5)
+  public static let defaultRetryableHTTPStatusCodes: Set<HTTPResponse.Status> = [
+    .requestTimeout,  // [Request Timeout](https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.4.9)
+    .internalServerError,  // [Internal Server Error](https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.5.1)
+    .badGateway,  // [Bad Gateway](https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.5.3)
+    .serviceUnavailable,  // [Service Unavailable](https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.5.4)
+    .gatewayTimeout,  // [Gateway Timeout](https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.5.5)
   ]
 
   /// The default URL error codes to retry.
@@ -251,7 +251,7 @@ public actor RetryPolicy: HTTPClientInterceptor {
   public let retryableHTTPMethods: Set<HTTPRequest.Method>
 
   /// The HTTP status codes that are automatically retried by the policy.
-  public let retryableHTTPStatusCodes: Set<Int>
+  public let retryableHTTPStatusCodes: Set<HTTPResponse.Status>
 
   /// The URL error codes that are automatically retried by the policy.
   public let retryableURLErrorCodes: Set<URLError.Code>
@@ -273,7 +273,8 @@ public actor RetryPolicy: HTTPClientInterceptor {
     exponentialBackoffBase: UInt = RetryPolicy.defaultExponentialBackoffBase,
     exponentialBackoffScale: Double = RetryPolicy.defaultExponentialBackoffScale,
     retryableHTTPMethods: Set<HTTPRequest.Method> = RetryPolicy.defaultRetryableHTTPMethods,
-    retryableHTTPStatusCodes: Set<Int> = RetryPolicy.defaultRetryableHTTPStatusCodes,
+    retryableHTTPStatusCodes: Set<HTTPResponse.Status> = RetryPolicy
+      .defaultRetryableHTTPStatusCodes,
     retryableURLErrorCodes: Set<URLError.Code> = RetryPolicy.defaultRetryableURLErrorCodes
   ) {
     precondition(
@@ -312,9 +313,7 @@ public actor RetryPolicy: HTTPClientInterceptor {
         let delay =
           pow(Double(exponentialBackoffBase), Double(retryCount)) * exponentialBackoffScale
 
-        if #available(macOS 13.0, *) {
-          try await Task.sleep(for: .seconds(delay))
-        }
+        try await Task.sleep(nanoseconds: UInt64(delay) * NSEC_PER_SEC)
 
         return try await self.intercept(request, next: next)
       }
@@ -328,8 +327,8 @@ public actor RetryPolicy: HTTPClientInterceptor {
       return false
     }
 
-    if case let HTTPClientError.unsuccessfulStatusCode(status, _) = error,
-      retryableHTTPStatusCodes.contains(status.code)
+    if case let HTTPClientError.unacceptableStatusCode(status, _) = error,
+      retryableHTTPStatusCodes.contains(status)
     {
       return true
     }

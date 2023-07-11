@@ -1,6 +1,6 @@
 import Foundation
-import HTTPTypes
-import HTTPTypesFoundation
+@_exported import HTTPTypes
+@_exported import HTTPTypesFoundation
 
 /// A protocol for intercepting HTTP client requests.
 public protocol HTTPClientInterceptor: Sendable {
@@ -32,7 +32,18 @@ public actor HTTPClient: HTTPClientProtocol {
   /// - Parameters:
   ///   - session: The URLSession to use for making requests.
   ///   - interceptors: The array of interceptors to apply to requests.
-  public init(session: URLSession = .shared, interceptors: [HTTPClientInterceptor] = []) {
+  public init(
+    session: URLSession = .shared,
+    interceptors: [HTTPClientInterceptor] = [StatusCodeValidator()]
+  ) {
+    let defaultHeaders = Dictionary(
+      uniqueKeysWithValues: HTTPFields.default.map {
+        ($0.name.rawName, $0.value) as (AnyHashable, Any)
+      })
+    var additionalHeaders = session.configuration.httpAdditionalHeaders ?? [:]
+    additionalHeaders.merge(defaultHeaders, uniquingKeysWith: { additional, _ in additional })
+    session.configuration.httpAdditionalHeaders = additionalHeaders
+
     self.session = session
     self.interceptors = interceptors
   }
@@ -51,9 +62,6 @@ public actor HTTPClient: HTTPClientProtocol {
         try await interceptor.intercept($0, next: tmp)
       }
     }
-
-    var request = request
-    request.underlyingRequest.headerFields.append(contentsOf: HTTPFields.default)
 
     let (data, response) = try await next(request.underlyingRequest)
     return try request.decode(data, response)

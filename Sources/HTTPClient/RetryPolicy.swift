@@ -288,34 +288,29 @@ public actor RetryPolicy: HTTPClientInterceptor {
     self.retryableURLErrorCodes = retryableURLErrorCodes
   }
 
-  private var retryCounts: [URL: UInt] = [:]
-
   public func intercept(
     _ request: HTTPRequest,
     next: (HTTPRequest) async throws -> (Data, HTTPResponse)
   ) async throws -> (Data, HTTPResponse) {
-    guard let url = request.url else {
-      throw URLError(.badURL)
-    }
+    try await execute(request, retryCount: 0, next: next)
+  }
 
+  private func execute(
+    _ request: HTTPRequest,
+    retryCount: UInt,
+    next: (HTTPRequest) async throws -> (Data, HTTPResponse)
+  ) async throws -> (Data, HTTPResponse) {
     do {
       let (data, response) = try await next(request)
-
-      // clean up retry count
-      retryCounts[url] = nil
-
       return (data, response)
     } catch {
-      let retryCount = retryCounts[url, default: 0]
-
       if retryCount < retryLimit, shouldRetry(request: request, dueTo: error) {
-        retryCounts[url] = retryCount + 1
         let delay =
           pow(Double(exponentialBackoffBase), Double(retryCount)) * exponentialBackoffScale
 
         try await Task.sleep(nanoseconds: UInt64(delay) * NSEC_PER_SEC)
 
-        return try await self.intercept(request, next: next)
+        return try await self.execute(request, retryCount: retryCount + 1, next: next)
       }
 
       throw error

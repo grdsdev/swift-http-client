@@ -1,6 +1,6 @@
 # `swift-http-client`
 
-A Swift HTTP client built upon `SwiftOpenAPIRuntime` and `OpenAPIURLSession` implementations. This library provides the base types from those libraries, excluding the code generation specific code.
+A Swift HTTP client built upon [`SwiftOpenAPIRuntime`](https://github.com/apple/swift-openapi-runtime) and [`OpenAPIURLSession`](https://github.com/apple/swift-openapi-urlsession) implementations. This library provides the base types from those libraries, excluding the code generation specific code.
 
 If you want to leverage the benefits of those Apple libraries without using code generation, this is the library for you.
 

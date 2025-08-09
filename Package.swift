@@ -16,11 +16,7 @@ let package = Package(
     .library(
       name: "HTTPClient",
       targets: ["HTTPClient"]
-    ),
-    .library(
-      name: "HTTPClientFoundation",
-      targets: ["HTTPClientFoundation"]
-    ),
+    )
   ],
   dependencies: [
     .package(url: "https://github.com/apple/swift-http-types", from: "1.0.0"),
@@ -34,20 +30,14 @@ let package = Package(
       name: "HTTPClient",
       dependencies: [
         .product(name: "HTTPTypes", package: "swift-http-types"),
-        .product(name: "Logging", package: "swift-log"),
-      ]
-    ),
-    .target(
-      name: "HTTPClientFoundation",
-      dependencies: [
-        .product(name: "DequeModule", package: "swift-collections"),
         .product(name: "HTTPTypesFoundation", package: "swift-http-types"),
-        "HTTPClient",
+        .product(name: "Logging", package: "swift-log"),
+        .product(name: "DequeModule", package: "swift-collections"),
       ]
     ),
     .testTarget(
       name: "HTTPClientTests",
-      dependencies: ["HTTPClient", "HTTPClientFoundation"]
+      dependencies: ["HTTPClient"]
     ),
   ]
 )

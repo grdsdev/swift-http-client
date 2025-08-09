@@ -4,19 +4,35 @@ A Swift HTTP client built upon [`SwiftOpenAPIRuntime`](https://github.com/apple/
 
 If you want to leverage the benefits of those Apple libraries without using code generation, this is the library for you.
 
+## Installation
+
+Add the following to your `Package.swift` file:
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/grdsdev/swift-http-client", from: "1.0.0")
+],
+targets: [
+    .target(
+        name: "YourTarget",
+        dependencies: [
+            .product(name: "HTTPClient", package: "swift-http-client")
+        ]
+    )
+]
+```
+
 ## Usage
 
 ```swift
-
 import HTTPClient
-import HTTPClientFoundation // for the Foundation-based implementation
 
 let client = Client(
-    baseURL: URL(string: "https://api.example.com")!,
+    serverURL: URL(string: "https://api.example.com")!,
     transport: URLSessionTransport(),
     middlewares: [
-        LoggingMiddleware(),
-        /// ...
+        LoggingMiddleware(logger: Logger(label: "HTTPClient")),
+        // Add other middlewares here...
     ]
 )
 
@@ -27,6 +43,24 @@ let request = HTTPRequest(
 
 let (response, body) = try await client.send(request)
 ```
+
+## Features
+
+- **Transport Abstraction**: Pluggable transport layer with URLSession implementation included
+- **Middleware Support**: Interceptors for logging, authentication, metrics, and custom request/response processing
+- **Platform Support**: Works on iOS 13+, macOS 10.15+, tvOS 13+, watchOS 6+, and Linux
+- **Swift Concurrency**: Built with async/await and Sendable support
+- **Structured Error Handling**: Comprehensive error types with request/response context
+- **Streaming Support**: Platform-adaptive streaming for large request/response bodies
+
+## Architecture
+
+The library provides a simple but powerful architecture:
+
+- **Client**: Main interface that orchestrates requests through transport and middleware layers
+- **ClientTransport**: Protocol for abstracting HTTP operations (URLSession implementation provided)
+- **ClientMiddleware**: Protocol for request/response interception (logging middleware included)
+- **HTTPBody**: Streaming-capable request and response body handling
 
 ## License
 

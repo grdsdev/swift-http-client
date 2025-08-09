@@ -12,7 +12,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-import HTTPClient
 import HTTPTypes
 
 #if canImport(Darwin)

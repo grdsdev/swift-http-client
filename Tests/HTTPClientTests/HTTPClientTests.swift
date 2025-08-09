@@ -1,6 +1,4 @@
 import Foundation
-import HTTPClientFoundation
-import HTTPTypes
 import Logging
 import Testing
 

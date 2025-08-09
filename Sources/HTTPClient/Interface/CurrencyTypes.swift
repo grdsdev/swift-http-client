@@ -31,7 +31,9 @@ extension HTTPRequest: PrettyStringConvertible {
 }
 
 extension HTTPResponse: PrettyStringConvertible {
-  var prettyDescription: String { "\(status.code) \(status.reasonPhrase) [\(headerFields.prettyDescription)]" }
+  var prettyDescription: String {
+    "\(status.code) \(status.reasonPhrase) [\(headerFields.prettyDescription)]"
+  }
 }
 
 extension HTTPBody: PrettyStringConvertible {

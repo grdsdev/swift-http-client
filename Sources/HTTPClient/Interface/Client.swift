@@ -48,7 +48,6 @@ public struct Client: Sendable {
   /// - Parameters:
   ///   - request: The HTTP request to send.
   ///   - body: The HTTP request body to send.
-  ///   - baseURL: The base URL to use for the request.
   /// - Returns: The HTTP response and its body.
   /// - Throws: An error if any part of the HTTP operation process fails.
   public func send(

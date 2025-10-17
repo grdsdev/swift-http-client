@@ -26,7 +26,9 @@ jobs:
       - name: Select Xcode ${{ matrix.xcode }}
         run: sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
+        with:
+          go-version: "stable"
       - name: Run httpbingo.org
         run: go run github.com/mccutchen/go-httpbin/v2/cmd/go-httpbin@latest -host 127.0.0.1 -port 8081
       - name: Run ${{ matrix.config }} tests

@@ -83,21 +83,21 @@ import HTTPTypes
 
     /// Use `bidirectionalStreamingRequest(for:baseURL:requestBody:requestStreamBufferSize:responseStreamWatermarks:)`.
     init(
-      requestBody: HTTPBody?, requestStreamBufferSize: Int,
+      requestBody: HTTPBody?,
+      requestStreamBufferSize: Int,
       responseStreamWatermarks: (low: Int, high: Int)
     ) {
       self.requestBody = requestBody
       self.hasAlreadyIteratedRequestBody = false
       self.hasSuspendedURLSessionTask = LockedValueBox(false)
       self.requestStreamBufferSize = requestStreamBufferSize
-      (self.responseBodyStream, self.responseBodyStreamSource) =
-        ResponseBodyStream.makeStream(
-          backPressureStrategy: .customWatermark(
-            low: responseStreamWatermarks.low,
-            high: responseStreamWatermarks.high,
-            waterLevelForElement: { $0.count }
-          )
+      (self.responseBodyStream, self.responseBodyStreamSource) = ResponseBodyStream.makeStream(
+        backPressureStrategy: .customWatermark(
+          low: responseStreamWatermarks.low,
+          high: responseStreamWatermarks.high,
+          waterLevelForElement: { $0.count }
         )
+      )
     }
 
     func urlSession(_ session: URLSession, needNewBodyStreamForTask task: URLSessionTask) async
@@ -117,8 +117,7 @@ import HTTPTypes
         hasAlreadyIteratedRequestBody = true
 
         // Create a fresh pair of streams.
-        let (inputStream, outputStream) = createStreamPair(
-          withBufferSize: requestStreamBufferSize)
+        let (inputStream, outputStream) = createStreamPair(withBufferSize: requestStreamBufferSize)
 
         // Bridge the output stream to the request body (which opens the output stream).
         requestStream = HTTPBodyOutputStreamBridge(outputStream, requestBody!)
@@ -132,37 +131,28 @@ import HTTPTypes
       callbackLock.withLock {
         debug("Task delegate: didReceive data (numBytes: \(data.count))")
         do {
-          switch try responseBodyStreamSource.write(
-            contentsOf: CollectionOfOne(ArraySlice(data)))
-          {
+          switch try responseBodyStreamSource.write(contentsOf: CollectionOfOne(ArraySlice(data))) {
           case .produceMore: break
           case .enqueueCallback(let callbackToken):
-            let shouldActuallyEnqueueCallback =
-              hasSuspendedURLSessionTask.withLockedValue {
-                hasSuspendedURLSessionTask in
-                if hasSuspendedURLSessionTask {
-                  debug(
-                    "Task delegate: already suspended task, not enqueing another writer callback"
-                  )
-                  return false
-                }
-                debug(
-                  "Task delegate: response stream backpressure, suspending task and enqueing callback"
-                )
-                dataTask.suspend()
-                hasSuspendedURLSessionTask = true
-                return true
+            let shouldActuallyEnqueueCallback = hasSuspendedURLSessionTask.withLockedValue {
+              hasSuspendedURLSessionTask in
+              if hasSuspendedURLSessionTask {
+                debug("Task delegate: already suspended task, not enqueing another writer callback")
+                return false
               }
+              debug(
+                "Task delegate: response stream backpressure, suspending task and enqueing callback"
+              )
+              dataTask.suspend()
+              hasSuspendedURLSessionTask = true
+              return true
+            }
             if shouldActuallyEnqueueCallback {
-              responseBodyStreamSource.enqueueCallback(callbackToken: callbackToken) {
-                result in
-                self.hasSuspendedURLSessionTask.withLockedValue {
-                  hasSuspendedURLSessionTask in
+              responseBodyStreamSource.enqueueCallback(callbackToken: callbackToken) { result in
+                self.hasSuspendedURLSessionTask.withLockedValue { hasSuspendedURLSessionTask in
                   switch result {
                   case .success:
-                    debug(
-                      "Task delegate: response stream callback, resuming task"
-                    )
+                    debug("Task delegate: response stream callback, resuming task")
                     dataTask.resume()
                     hasSuspendedURLSessionTask = false
                   case .failure(let error):
@@ -183,7 +173,9 @@ import HTTPTypes
     }
 
     func urlSession(
-      _ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse
+      _ session: URLSession,
+      dataTask: URLSessionDataTask,
+      didReceive response: URLResponse
     ) async
       -> URLSession.ResponseDisposition
     {
@@ -196,7 +188,9 @@ import HTTPTypes
     }
 
     func urlSession(
-      _ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?
+      _ session: URLSession,
+      task: URLSessionTask,
+      didCompleteWithError error: (any Error)?
     ) {
       callbackLock.withLock {
         debug("Task delegate: didCompleteWithError (error: \(String(describing: error)))")
@@ -215,7 +209,10 @@ import HTTPTypes
     var inputStream: InputStream?
     var outputStream: OutputStream?
     Stream.getBoundStreams(
-      withBufferSize: bufferSize, inputStream: &inputStream, outputStream: &outputStream)
+      withBufferSize: bufferSize,
+      inputStream: &inputStream,
+      outputStream: &outputStream
+    )
     guard let inputStream, let outputStream else {
       fatalError("getBoundStreams did not return non-nil streams")
     }

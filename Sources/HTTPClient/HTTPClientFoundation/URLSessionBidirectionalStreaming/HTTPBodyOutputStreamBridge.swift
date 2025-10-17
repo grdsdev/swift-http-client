@@ -19,7 +19,9 @@ import HTTPTypes
 
   final class HTTPBodyOutputStreamBridge: NSObject, StreamDelegate {
     static let streamQueue = DispatchQueue(
-      label: "HTTPBodyStreamDelegate", autoreleaseFrequency: .workItem)
+      label: "HTTPBodyStreamDelegate",
+      autoreleaseFrequency: .workItem
+    )
 
     let httpBody: HTTPBody
     let outputStream: OutputStream
@@ -69,8 +71,7 @@ import HTTPTypes
           try await withCheckedThrowingContinuation { continuation in
             Self.streamQueue.async {
               debug("Output stream delegate produced chunk and suspended producer.")
-              self.performAction(
-                self.state.producedChunkAndSuspendedProducer(chunk, continuation))
+              self.performAction(self.state.producedChunkAndSuspendedProducer(chunk, continuation))
             }
           }
         }
@@ -87,8 +88,7 @@ import HTTPTypes
       precondition(!bytesToWrite.isEmpty, "\(#function) must be called with non-empty bytes")
       guard outputStream.streamStatus == .open else {
         debug("Output stream closed unexpectedly.")
-        performAction(
-          state.wroteBytes(numBytesWritten: 0, streamStillHasSpaceAvailable: false))
+        performAction(state.wroteBytes(numBytesWritten: 0, streamStillHasSpaceAvailable: false))
         return
       }
       switch bytesToWrite.withUnsafeBytes({
@@ -107,10 +107,10 @@ import HTTPTypes
         performAction(
           state.wroteBytes(
             numBytesWritten: written,
-            streamStillHasSpaceAvailable: outputStream.hasSpaceAvailable)
+            streamStillHasSpaceAvailable: outputStream.hasSpaceAvailable
+          )
         )
-      default:
-        preconditionFailure("OutputStream.write(_:maxLength:) returned undocumented value")
+      default: preconditionFailure("OutputStream.write(_:maxLength:) returned undocumented value")
       }
     }
 
@@ -157,7 +157,8 @@ import HTTPTypes
       }
 
       mutating func producedChunkAndSuspendedProducer(
-        _ chunk: Chunk, _ producerContinuation: ProducerContinuation
+        _ chunk: Chunk,
+        _ producerContinuation: ProducerContinuation
       )
         -> Action
       {
@@ -172,24 +173,21 @@ import HTTPTypes
         }
       }
 
-      mutating func wroteBytes(numBytesWritten: Int, streamStillHasSpaceAvailable: Bool)
-        -> Action
-      {
+      mutating func wroteBytes(numBytesWritten: Int, streamStillHasSpaceAvailable: Bool) -> Action {
         switch self {
         case .haveBytes(let spaceAvailable, let chunk, let producerContinuation):
-          guard spaceAvailable, numBytesWritten <= chunk.count else {
-            preconditionFailure()
-          }
+          guard spaceAvailable, numBytesWritten <= chunk.count else { preconditionFailure() }
           let remaining = chunk.dropFirst(numBytesWritten)
           guard remaining.isEmpty else {
             self = .haveBytes(
-              spaceAvailable: streamStillHasSpaceAvailable, remaining,
-              producerContinuation)
+              spaceAvailable: streamStillHasSpaceAvailable,
+              remaining,
+              producerContinuation
+            )
             guard streamStillHasSpaceAvailable else { return .none }
             return .writeBytes(remaining)
           }
-          self = .needBytes(
-            spaceAvailable: streamStillHasSpaceAvailable, producerContinuation)
+          self = .needBytes(spaceAvailable: streamStillHasSpaceAvailable, producerContinuation)
           return .resumeProducer(producerContinuation)
         case .initial, .needBytes, .waitingForBytes, .closed:
           preconditionFailure("\(#function) called in invalid state: \(self)")
@@ -245,8 +243,7 @@ import HTTPTypes
         case .needBytes(_, let producerContinuation):
           self = .closed(nil)
           return .cancelProducerAndCloseStream(producerContinuation)
-        case .initial, .closed:
-          preconditionFailure("\(#function) called in invalid state: \(self)")
+        case .initial, .closed: preconditionFailure("\(#function) called in invalid state: \(self)")
         }
       }
 

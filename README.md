@@ -82,25 +82,6 @@ The library automatically handles:
 - Memory-efficient encoding (data < 10 MB is encoded in memory, larger data is streamed from disk)
 - Automatic MIME type detection for file uploads
 
-## Features
-
-- **Transport Abstraction**: Pluggable transport layer with URLSession implementation included
-- **Middleware Support**: Interceptors for logging, authentication, metrics, and custom request/response processing
-- **Multipart Form Data**: Built-in support for file uploads with automatic memory management
-- **Platform Support**: Works on iOS 13+, macOS 10.15+, tvOS 13+, watchOS 6+, and Linux
-- **Swift Concurrency**: Built with async/await and Sendable support
-- **Structured Error Handling**: Comprehensive error types with request/response context
-- **Streaming Support**: Platform-adaptive streaming for large request/response bodies
-
-## Architecture
-
-The library provides a simple but powerful architecture:
-
-- **Client**: Main interface that orchestrates requests through transport and middleware layers
-- **ClientTransport**: Protocol for abstracting HTTP operations (URLSession implementation provided)
-- **ClientMiddleware**: Protocol for request/response interception (logging middleware included)
-- **HTTPBody**: Streaming-capable request and response body handling
-
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

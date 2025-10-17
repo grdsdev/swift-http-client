@@ -44,23 +44,43 @@ let request = HTTPRequest(
 let (response, body) = try await client.send(request)
 ```
 
-## Features
+### Multipart Form Data
 
-- **Transport Abstraction**: Pluggable transport layer with URLSession implementation included
-- **Middleware Support**: Interceptors for logging, authentication, metrics, and custom request/response processing
-- **Platform Support**: Works on iOS 13+, macOS 10.15+, tvOS 13+, watchOS 6+, and Linux
-- **Swift Concurrency**: Built with async/await and Sendable support
-- **Structured Error Handling**: Comprehensive error types with request/response context
-- **Streaming Support**: Platform-adaptive streaming for large request/response bodies
+The library provides built-in support for `multipart/form-data` requests, making it easy to upload files and form data:
 
-## Architecture
+```swift
+// Using closure builder pattern
+let request = HTTPRequest(method: .post, url: URL(string: "/upload")!)
 
-The library provides a simple but powerful architecture:
+let (response, body) = try await client.send(
+    multipartFormData: { formData in
+        // Add text fields
+        formData.append(
+            "John Doe".data(using: .utf8)!,
+            withName: "username"
+        )
+        
+        // Add files
+        let fileURL = URL(fileURLWithPath: "/path/to/document.pdf")
+        formData.append(fileURL, withName: "document")
+        
+        // Add data with custom filename and MIME type
+        let imageData = ... // Your image data
+        formData.append(
+            imageData,
+            withName: "avatar",
+            fileName: "profile.jpg",
+            mimeType: "image/jpeg"
+        )
+    },
+    with: request
+)
+```
 
-- **Client**: Main interface that orchestrates requests through transport and middleware layers
-- **ClientTransport**: Protocol for abstracting HTTP operations (URLSession implementation provided)
-- **ClientMiddleware**: Protocol for request/response interception (logging middleware included)
-- **HTTPBody**: Streaming-capable request and response body handling
+The library automatically handles:
+- Setting the correct `Content-Type` header with boundary
+- Memory-efficient encoding (data < 10 MB is encoded in memory, larger data is streamed from disk)
+- Automatic MIME type detection for file uploads
 
 ## License
 

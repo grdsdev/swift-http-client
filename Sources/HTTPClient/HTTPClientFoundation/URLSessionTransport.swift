@@ -300,12 +300,11 @@ extension URLSessionTransportError: CustomStringConvertible {
   /// A textual representation of this instance.
   var description: String {
     switch self {
-    case let .invalidRequestURL(path: path, method: method, baseURL: baseURL):
+    case .invalidRequestURL(let path, let method, let baseURL):
       return
         "Invalid request URL from request path: \(path), method: \(method), relative to base URL: \(baseURL.absoluteString)"
     case .notHTTPResponse(let response):
-      return
-        "Received a non-HTTP response, of type: \(String(describing: type(of: response)))"
+      return "Received a non-HTTP response, of type: \(String(describing: type(of: response)))"
     case .invalidResponseStatusCode(let response):
       return "Received an HTTP response with invalid status code: \(response.statusCode))"
     case .noResponse(let url):
@@ -315,12 +314,12 @@ extension URLSessionTransportError: CustomStringConvertible {
   }
 }
 
-private let _debugLoggingEnabled = LockStorage.create(value: false)
+private let _debugLoggingEnabled = LockedValueBox(false)
 var debugLoggingEnabled: Bool {
   get { _debugLoggingEnabled.withLockedValue { $0 } }
   set { _debugLoggingEnabled.withLockedValue { $0 = newValue } }
 }
-private let _standardErrorLock = LockStorage.create(value: FileHandle.standardError)
+private let _standardErrorLock = LockedValueBox(FileHandle.standardError)
 func debug(
   _ message: @autoclosure () -> String,
   function: String = #function,
@@ -331,8 +330,7 @@ func debug(
     {
       if debugLoggingEnabled {
         _standardErrorLock.withLockedValue {
-          let logLine =
-            "[\(function) \(file.split(separator: "/").last!):\(line)] \(message())\n"
+          let logLine = "[\(function) \(file.split(separator: "/").last!):\(line)] \(message())\n"
           $0.write(Data((logLine).utf8))
         }
       }
@@ -349,9 +347,7 @@ extension URLSession {
   ) async throws -> (HTTPResponse, HTTPBody?) {
     try Task.checkCancellation()
     var urlRequest = try URLRequest(request, baseURL: baseURL)
-    if let requestBody {
-      urlRequest.httpBody = try await Data(collecting: requestBody, upTo: .max)
-    }
+    if let requestBody { urlRequest.httpBody = try await Data(collecting: requestBody, upTo: .max) }
     try Task.checkCancellation()
 
     /// Use `dataTask(with:completionHandler:)` here because `data(for:[delegate:]) async` is only available on
@@ -361,8 +357,7 @@ extension URLSession {
       let (response, maybeResponseBodyData): (URLResponse, Data?) =
         try await withCheckedThrowingContinuation {
           continuation in
-          let task = self.dataTask(with: urlRequest) {
-            [urlRequest] data, response, error in
+          let task = self.dataTask(with: urlRequest) { [urlRequest] data, response, error in
             if let error {
               continuation.resume(throwing: error)
               return
@@ -389,11 +384,7 @@ extension URLSession {
         }
 
       let maybeResponseBody = maybeResponseBodyData.map { data in
-        HTTPBody(
-          data,
-          length: HTTPBody.Length(from: response),
-          iterationBehavior: .multiple
-        )
+        HTTPBody(data, length: HTTPBody.Length(from: response), iterationBehavior: .multiple)
       }
       return (try HTTPResponse(response), maybeResponseBody)
     } onCancel: {

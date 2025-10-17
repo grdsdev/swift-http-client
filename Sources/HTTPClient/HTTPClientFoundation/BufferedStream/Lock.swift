@@ -11,7 +11,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 //===----------------------------------------------------------------------===//
-// swift-format-ignore-file
+
 //===----------------------------------------------------------------------===//
 //
 // This source file is part of the SwiftNIO open source project
@@ -27,23 +27,50 @@
 //===----------------------------------------------------------------------===//
 
 #if canImport(Darwin)
-import Darwin
-#elseif canImport(Glibc)
-import Glibc
+  import Darwin
 #elseif os(Windows)
-import WinSDK
+  import ucrt
+  import WinSDK
+#elseif canImport(Glibc)
+  @preconcurrency import Glibc
+#elseif canImport(Musl)
+  @preconcurrency import Musl
+#elseif canImport(Bionic)
+  @preconcurrency import Bionic
+#elseif canImport(WASILibc)
+  @preconcurrency import WASILibc
+  #if canImport(wasi_pthread)
+    import wasi_pthread
+  #endif
+#else
+  #error("The concurrency Lock module was unable to identify your C library.")
 #endif
 
 #if os(Windows)
-@usableFromInline
-typealias LockPrimitive = SRWLOCK
+  @usableFromInline
+  typealias LockPrimitive = SRWLOCK
 #else
-@usableFromInline
-typealias LockPrimitive = pthread_mutex_t
+  @usableFromInline
+  typealias LockPrimitive = pthread_mutex_t
 #endif
 
+/// A utility function that runs the body code only in debug builds, without
+/// emitting compiler warnings.
+///
+/// This is currently the only way to do this in Swift: see
+/// https://forums.swift.org/t/support-debug-only-code/11037 for a discussion.
+@inlinable
+internal func debugOnly(_ body: () -> Void) {
+  assert(
+    {
+      body()
+      return true
+    }()
+  )
+}
+
 @usableFromInline
-enum LockOperations {}
+enum LockOperations: Sendable {}
 
 extension LockOperations {
   @inlinable
@@ -51,13 +78,16 @@ extension LockOperations {
     mutex.assertValidAlignment()
 
     #if os(Windows)
-    InitializeSRWLock(mutex)
-    #else
-    var attr = pthread_mutexattr_t()
-    pthread_mutexattr_init(&attr)
+      InitializeSRWLock(mutex)
+    #elseif (compiler(<6.1) && !os(WASI)) || (compiler(>=6.1) && _runtime(_multithreaded))
+      var attr = pthread_mutexattr_t()
+      pthread_mutexattr_init(&attr)
+      debugOnly {
+        pthread_mutexattr_settype(&attr, .init(PTHREAD_MUTEX_ERRORCHECK))
+      }
 
-    let err = pthread_mutex_init(mutex, &attr)
-    precondition(err == 0, "\(#function) failed in pthread_mutex with error \(err)")
+      let err = pthread_mutex_init(mutex, &attr)
+      precondition(err == 0, "\(#function) failed in pthread_mutex with error \(err)")
     #endif
   }
 
@@ -66,10 +96,10 @@ extension LockOperations {
     mutex.assertValidAlignment()
 
     #if os(Windows)
-    // SRWLOCK does not need to be freed
-    #else
-    let err = pthread_mutex_destroy(mutex)
-    precondition(err == 0, "\(#function) failed in pthread_mutex with error \(err)")
+      // SRWLOCK does not need to be free'd
+    #elseif (compiler(<6.1) && !os(WASI)) || (compiler(>=6.1) && _runtime(_multithreaded))
+      let err = pthread_mutex_destroy(mutex)
+      precondition(err == 0, "\(#function) failed in pthread_mutex with error \(err)")
     #endif
   }
 
@@ -78,10 +108,10 @@ extension LockOperations {
     mutex.assertValidAlignment()
 
     #if os(Windows)
-    AcquireSRWLockExclusive(mutex)
-    #else
-    let err = pthread_mutex_lock(mutex)
-    precondition(err == 0, "\(#function) failed in pthread_mutex with error \(err)")
+      AcquireSRWLockExclusive(mutex)
+    #elseif (compiler(<6.1) && !os(WASI)) || (compiler(>=6.1) && _runtime(_multithreaded))
+      let err = pthread_mutex_lock(mutex)
+      precondition(err == 0, "\(#function) failed in pthread_mutex with error \(err)")
     #endif
   }
 
@@ -90,10 +120,10 @@ extension LockOperations {
     mutex.assertValidAlignment()
 
     #if os(Windows)
-    ReleaseSRWLockExclusive(mutex)
-    #else
-    let err = pthread_mutex_unlock(mutex)
-    precondition(err == 0, "\(#function) failed in pthread_mutex with error \(err)")
+      ReleaseSRWLockExclusive(mutex)
+    #elseif (compiler(<6.1) && !os(WASI)) || (compiler(>=6.1) && _runtime(_multithreaded))
+      let err = pthread_mutex_unlock(mutex)
+      precondition(err == 0, "\(#function) failed in pthread_mutex with error \(err)")
     #endif
   }
 }
@@ -132,9 +162,11 @@ final class LockStorage<Value>: ManagedBuffer<Value, LockPrimitive> {
   @inlinable
   static func create(value: Value) -> Self {
     let buffer = Self.create(minimumCapacity: 1) { _ in
-      return value
+      value
     }
-    // Avoid 'unsafeDowncast' as there is a miscompilation on 5.10.
+    // Intentionally using a force cast here to avoid a miss compiliation in 5.10.
+    // This is as fast as an unsafeDownCast since ManagedBuffer is inlined and the optimizer
+    // can eliminate the upcast/downcast pair
     let storage = buffer as! Self
 
     storage.withUnsafeMutablePointers { _, lockPtr in
@@ -158,7 +190,7 @@ final class LockStorage<Value>: ManagedBuffer<Value, LockPrimitive> {
     }
   }
 
-  @usableFromInline
+  @inlinable
   deinit {
     self.withUnsafeMutablePointerToElements { lockPtr in
       LockOperations.destroy(lockPtr)
@@ -166,11 +198,10 @@ final class LockStorage<Value>: ManagedBuffer<Value, LockPrimitive> {
   }
 
   @inlinable
-  func withLockPrimitive<T>(
-    _ body: (UnsafeMutablePointer<LockPrimitive>) throws -> T
-  ) rethrows -> T {
+  func withLockPrimitive<T>(_ body: (UnsafeMutablePointer<LockPrimitive>) throws -> T) rethrows -> T
+  {
     try self.withUnsafeMutablePointerToElements { lockPtr in
-      return try body(lockPtr)
+      try body(lockPtr)
     }
   }
 
@@ -184,11 +215,16 @@ final class LockStorage<Value>: ManagedBuffer<Value, LockPrimitive> {
   }
 }
 
-extension LockStorage: @unchecked Sendable {}
+// This compiler guard is here becaue `ManagedBuffer` is already declaring
+// Sendable unavailability after 6.1, which `LockStorage` inherits.
+#if compiler(<6.2)
+  @available(*, unavailable)
+  extension LockStorage: Sendable {}
+#endif
 
 /// A threading lock based on `libpthread` instead of `libdispatch`.
 ///
-/// - note: ``Lock`` has reference semantics.
+/// - Note: ``Lock`` has reference semantics.
 ///
 /// This object provides a lock on top of a single `pthread_mutex_t`. This kind
 /// of lock is safe to use with `libpthread`-based threading models, such as the
@@ -200,7 +236,7 @@ struct Lock {
   internal let _storage: LockStorage<Void>
 
   /// Create a new lock.
-  @usableFromInline
+  @inlinable
   init() {
     self._storage = .create(value: ())
   }
@@ -224,10 +260,10 @@ struct Lock {
   }
 
   @inlinable
-  internal func withLockPrimitive<T>(
-    _ body: (UnsafeMutablePointer<LockPrimitive>) throws -> T
-  ) rethrows -> T {
-    return try self._storage.withLockPrimitive(body)
+  internal func withLockPrimitive<T>(_ body: (UnsafeMutablePointer<LockPrimitive>) throws -> T)
+    rethrows -> T
+  {
+    try self._storage.withLockPrimitive(body)
   }
 }
 
@@ -248,9 +284,14 @@ extension Lock {
     }
     return try body()
   }
+
+  @inlinable
+  func withLockVoid(_ body: () throws -> Void) rethrows {
+    try self.withLock(body)
+  }
 }
 
-extension Lock: Sendable {}
+extension Lock: @unchecked Sendable {}
 
 extension UnsafeMutablePointer {
   @inlinable
@@ -259,20 +300,74 @@ extension UnsafeMutablePointer {
   }
 }
 
+/// Provides locked access to `Value`.
+///
+/// - Note: ``LockedValueBox`` has reference semantics and holds the `Value`
+///         alongside a lock behind a reference.
+///
+/// This is no different than creating a ``Lock`` and protecting all
+/// accesses to a value using the lock. But it's easy to forget to actually
+/// acquire/release the lock in the correct place. ``LockedValueBox`` makes
+/// that much easier.
 @usableFromInline
 struct LockedValueBox<Value> {
-  @usableFromInline
-  let storage: LockStorage<Value>
 
   @usableFromInline
+  internal let _storage: LockStorage<Value>
+
+  /// Initialize the `Value`.
+  @inlinable
   init(_ value: Value) {
-    self.storage = .create(value: value)
+    self._storage = .create(value: value)
   }
 
+  /// Access the `Value`, allowing mutation of it.
   @inlinable
   func withLockedValue<T>(_ mutate: (inout Value) throws -> T) rethrows -> T {
-    return try self.storage.withLockedValue(mutate)
+    try self._storage.withLockedValue(mutate)
+  }
+
+  /// Provides an unsafe view over the lock and its value.
+  ///
+  /// This can be beneficial when you require fine grained control over the lock in some
+  /// situations but don't want lose the benefits of ``withLockedValue(_:)`` in others by
+  /// switching to ``NIOLock``.
+  var unsafe: Unsafe {
+    Unsafe(_storage: self._storage)
+  }
+
+  /// Provides an unsafe view over the lock and its value.
+  struct Unsafe {
+    @usableFromInline
+    let _storage: LockStorage<Value>
+
+    /// Manually acquire the lock.
+    @inlinable
+    func lock() {
+      self._storage.lock()
+    }
+
+    /// Manually release the lock.
+    @inlinable
+    func unlock() {
+      self._storage.unlock()
+    }
+
+    /// Mutate the value, assuming the lock has been acquired manually.
+    ///
+    /// - Parameter mutate: A closure with scoped access to the value.
+    /// - Returns: The result of the `mutate` closure.
+    @inlinable
+    func withValueAssumingLockIsAcquired<Result>(
+      _ mutate: (_ value: inout Value) throws -> Result
+    ) rethrows -> Result {
+      try self._storage.withUnsafeMutablePointerToHeader { value in
+        try mutate(&value.pointee)
+      }
+    }
   }
 }
 
-extension LockedValueBox: Sendable where Value: Sendable {}
+extension LockedValueBox: @unchecked Sendable where Value: Sendable {}
+
+extension LockedValueBox.Unsafe: @unchecked Sendable where Value: Sendable {}

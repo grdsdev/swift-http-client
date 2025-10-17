@@ -29,10 +29,20 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: "stable"
-      - name: Run httpbingo.org
-        run: go run github.com/mccutchen/go-httpbin/v2/cmd/go-httpbin@latest -host 127.0.0.1 -port 8081
+      - name: Start httpbingo.org in background
+        run: |
+          go run github.com/mccutchen/go-httpbin/v2/cmd/go-httpbin@latest -host 127.0.0.1 -port 8081 &
+          echo $! > /tmp/httpbingo.pid
+          sleep 2
       - name: Run ${{ matrix.config }} tests
         run: swift test -c ${{ matrix.config }}
+      - name: Stop httpbingo.org
+        if: always()
+        run: |
+          if [ -f /tmp/httpbingo.pid ]; then
+            kill $(cat /tmp/httpbingo.pid) || true
+            rm /tmp/httpbingo.pid
+          fi
 
   linux:
     name: Linux

@@ -66,18 +66,14 @@ extension HTTPBody {
         }
       }
 
-      do {
-        while true {
-          let bytes = fileHandle.readData(ofLength: 64 * 1024)  // 64 KB chunks
-          if bytes.isEmpty {
-            break
-          }
-          continuation.yield(ByteChunk(bytes))
+      while true {
+        let bytes = fileHandle.readData(ofLength: 64 * 1024)  // 64 KB chunks
+        if bytes.isEmpty {
+          break
         }
-        continuation.finish()
-      } catch {
-        continuation.finish(throwing: error)
+        continuation.yield(ByteChunk(bytes))
       }
+      continuation.finish()
     }
 
     self.init(stream, length: length.map { .known(Int64($0)) } ?? .unknown)

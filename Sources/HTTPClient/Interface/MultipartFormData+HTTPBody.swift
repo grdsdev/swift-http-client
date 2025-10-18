@@ -59,7 +59,6 @@ extension HTTPBody {
     let fileHandle = try FileHandle(forReadingFrom: fileURL)
 
     let stream = AsyncThrowingStream<ByteChunk, any Error> { continuation in
-
       continuation.onTermination = { _ in
         try? fileHandle.close()
         if deleteOnDeallocation {
@@ -68,8 +67,12 @@ extension HTTPBody {
       }
 
       do {
-        while let byte = try fileHandle.read(upToCount: 64 * 1024) {  // 64 KB chunks
-          continuation.yield(ByteChunk(byte))
+        while true {
+          let bytes = fileHandle.readData(ofLength: 64 * 1024)  // 64 KB chunks
+          if bytes.isEmpty {
+            break
+          }
+          continuation.yield(ByteChunk(bytes))
         }
         continuation.finish()
       } catch {

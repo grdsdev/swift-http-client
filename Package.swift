@@ -4,13 +4,13 @@
 import PackageDescription
 
 let package = Package(
-  name: "HTTPClient",
+  name: "swift-http-client",
   platforms: [
-    .iOS(.v16),
-    .macOS(.v13),
-    .tvOS(.v16),
-    .watchOS(.v9),
-    .visionOS(.v1),
+    .iOS(.v13),
+    .macCatalyst(.v13),
+    .macOS(.v10_15),
+    .watchOS(.v6),
+    .tvOS(.v13),
   ],
   products: [
     // Products define the executables and libraries a package produces, making them visible to other packages.

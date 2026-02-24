@@ -383,9 +383,9 @@ struct IntegrationTests {
 
       func intercept(
         _ request: HTTPRequest,
-        body: HTTPBody?,
+        body: sending HTTPBody?,
         baseURL: URL,
-        next: (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+        next: (HTTPRequest, sending HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
       ) async throws -> (HTTPResponse, HTTPBody?) {
         var request = request
         request.headerFields[.authorization] = "Bearer \(token)"
@@ -428,9 +428,9 @@ struct IntegrationTests {
     struct UserAgentMiddleware: ClientMiddleware {
       func intercept(
         _ request: HTTPRequest,
-        body: HTTPBody?,
+        body: sending HTTPBody?,
         baseURL: URL,
-        next: (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+        next: (HTTPRequest, sending HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
       ) async throws -> (HTTPResponse, HTTPBody?) {
         var request = request
         request.headerFields[.userAgent] = "SwiftHTTPClient/Integration"
@@ -441,9 +441,9 @@ struct IntegrationTests {
     struct AcceptMiddleware: ClientMiddleware {
       func intercept(
         _ request: HTTPRequest,
-        body: HTTPBody?,
+        body: sending HTTPBody?,
         baseURL: URL,
-        next: (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+        next: (HTTPRequest, sending HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
       ) async throws -> (HTTPResponse, HTTPBody?) {
         var request = request
         request.headerFields[.accept] = "application/json"

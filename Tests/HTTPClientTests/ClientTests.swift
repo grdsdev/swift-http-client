@@ -13,12 +13,12 @@ struct ClientTests {
   struct MockTransport: ClientTransport {
     let responseStatus: HTTPResponse.Status
     let responseBody: String?
-    var onSend: ((HTTPRequest, HTTPBody?, URL) -> Void)?
+    var onSend: (@Sendable (HTTPRequest, HTTPBody?, URL) -> Void)?
 
     init(
       responseStatus: HTTPResponse.Status = .ok,
       responseBody: String? = nil,
-      onSend: ((HTTPRequest, HTTPBody?, URL) -> Void)? = nil
+      onSend: (@Sendable (HTTPRequest, HTTPBody?, URL) -> Void)? = nil
     ) {
       self.responseStatus = responseStatus
       self.responseBody = responseBody
@@ -27,7 +27,7 @@ struct ClientTests {
 
     func send(
       _ request: HTTPRequest,
-      body: HTTPBody?,
+      body: sending HTTPBody?,
       baseURL: URL
     ) async throws -> (HTTPResponse, HTTPBody?) {
       onSend?(request, body, baseURL)
@@ -44,7 +44,7 @@ struct ClientTests {
 
     func send(
       _ request: HTTPRequest,
-      body: HTTPBody?,
+      body: sending HTTPBody?,
       baseURL: URL
     ) async throws -> (HTTPResponse, HTTPBody?) {
       throw TransportFailure()
@@ -54,7 +54,7 @@ struct ClientTests {
   /// A mock middleware for testing
   struct MockMiddleware: ClientMiddleware {
     let id: String
-    var onIntercept: ((HTTPRequest, HTTPBody?, URL) -> Void)?
+    var onIntercept: (@Sendable (HTTPRequest, HTTPBody?, URL) -> Void)?
     var shouldModifyRequest: Bool = false
     var shouldFail: Bool = false
 
@@ -62,9 +62,9 @@ struct ClientTests {
 
     func intercept(
       _ request: HTTPRequest,
-      body: HTTPBody?,
+      body: sending HTTPBody?,
       baseURL: URL,
-      next: (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+      next: (HTTPRequest, sending HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
     ) async throws -> (HTTPResponse, HTTPBody?) {
       onIntercept?(request, body, baseURL)
 
@@ -125,14 +125,15 @@ struct ClientTests {
 
   @Test func sendRequestWithBody() async throws {
     let serverURL = URL(string: "https://api.example.com")!
-    var capturedBody: String?
+    let capturedBody = SendableBox<String?>(nil)
 
     let transport = MockTransport(
       responseStatus: .created,
       onSend: { _, body, _ in
         Task {
           if let body = body {
-            capturedBody = try? await String(collecting: body, upTo: 1024)
+            let value = try? await String(collecting: body, upTo: 1024)
+            capturedBody.withLock { $0 = value }
           }
         }
       }
@@ -151,11 +152,11 @@ struct ClientTests {
 
   @Test func clientPassesBaseURLToTransport() async throws {
     let serverURL = URL(string: "https://api.example.com")!
-    var capturedBaseURL: URL?
+    let capturedBaseURL = SendableBox<URL?>(nil)
 
     let transport = MockTransport(
       onSend: { _, _, baseURL in
-        capturedBaseURL = baseURL
+        capturedBaseURL.withLock { $0 = baseURL }
       }
     )
 
@@ -164,32 +165,32 @@ struct ClientTests {
     let request = HTTPRequest(method: .get, url: serverURL.appending(path: "test"))
     _ = try await client.send(request)
 
-    #expect(capturedBaseURL == serverURL)
+    #expect(capturedBaseURL.value == serverURL)
   }
 
   // MARK: - Middleware Tests
 
   @Test func middlewareExecutionOrder() async throws {
     let serverURL = URL(string: "https://api.example.com")!
-    var executionOrder: [String] = []
+    let executionOrder = SendableBox<[String]>([])
 
     let middleware1 = MockMiddleware(
       id: "m1",
       onIntercept: { _, _, _ in
-        executionOrder.append("m1")
+        executionOrder.withLock { $0.append("m1") }
       }
     )
 
     let middleware2 = MockMiddleware(
       id: "m2",
       onIntercept: { _, _, _ in
-        executionOrder.append("m2")
+        executionOrder.withLock { $0.append("m2") }
       }
     )
 
     let transport = MockTransport(
       onSend: { _, _, _ in
-        executionOrder.append("transport")
+        executionOrder.withLock { $0.append("transport") }
       }
     )
 
@@ -203,17 +204,17 @@ struct ClientTests {
     _ = try await client.send(request)
 
     // Middlewares should execute in order, then transport
-    #expect(executionOrder == ["m1", "m2", "transport"])
+    #expect(executionOrder.value == ["m1", "m2", "transport"])
   }
 
   @Test func middlewareCanModifyRequest() async throws {
     let serverURL = URL(string: "https://api.example.com")!
-    var capturedRequest: HTTPRequest?
+    let capturedRequest = SendableBox<HTTPRequest?>(nil)
 
     let middleware = MockMiddleware(id: "test", shouldModifyRequest: true)
     let transport = MockTransport(
       onSend: { request, _, _ in
-        capturedRequest = request
+        capturedRequest.withLock { $0 = request }
       }
     )
 
@@ -226,19 +227,19 @@ struct ClientTests {
     let request = HTTPRequest(method: .get, url: serverURL.appending(path: "test"))
     _ = try await client.send(request)
 
-    #expect(capturedRequest?.headerFields[.init("X-Middleware")!] == "test")
+    #expect(capturedRequest.value?.headerFields[.init("X-Middleware")!] == "test")
   }
 
   @Test func multipleMiddlewaresCanChainModifications() async throws {
     let serverURL = URL(string: "https://api.example.com")!
-    var capturedRequest: HTTPRequest?
+    let capturedRequest = SendableBox<HTTPRequest?>(nil)
 
     let middleware1 = MockMiddleware(id: "first", shouldModifyRequest: true)
     let middleware2 = MockMiddleware(id: "second", shouldModifyRequest: true)
 
     let transport = MockTransport(
       onSend: { request, _, _ in
-        capturedRequest = request
+        capturedRequest.withLock { $0 = request }
       }
     )
 
@@ -253,7 +254,7 @@ struct ClientTests {
 
     // Both middlewares should have modified the request
     // Note: The test middleware adds the same header, so we only see the last one
-    #expect(capturedRequest?.headerFields[.init("X-Middleware")!] != nil)
+    #expect(capturedRequest.value?.headerFields[.init("X-Middleware")!] != nil)
   }
 
   // MARK: - Error Handling Tests
@@ -395,6 +396,6 @@ struct ClientTests {
     }
 
     // If we got here without crashing, concurrent access works
-    #expect(true)
+    #expect(Bool(true))
   }
 }

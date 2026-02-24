@@ -103,9 +103,9 @@ struct ErrorTests {
     struct TestMiddleware: ClientMiddleware {
       func intercept(
         _ request: HTTPRequest,
-        body: HTTPBody?,
+        body: sending HTTPBody?,
         baseURL: URL,
-        next: (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+        next: (HTTPRequest, sending HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
       ) async throws -> (HTTPResponse, HTTPBody?) {
         try await next(request, body, baseURL)
       }
@@ -146,9 +146,9 @@ struct ErrorTests {
     struct DummyMiddleware: ClientMiddleware {
       func intercept(
         _ request: HTTPRequest,
-        body: HTTPBody?,
+        body: sending HTTPBody?,
         baseURL: URL,
-        next: (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+        next: (HTTPRequest, sending HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
       ) async throws -> (HTTPResponse, HTTPBody?) {
         try await next(request, body, baseURL)
       }
@@ -216,9 +216,9 @@ struct ErrorTests {
     struct FailingMiddleware: ClientMiddleware {
       func intercept(
         _ request: HTTPRequest,
-        body: HTTPBody?,
+        body: sending HTTPBody?,
         baseURL: URL,
-        next: (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+        next: (HTTPRequest, sending HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
       ) async throws -> (HTTPResponse, HTTPBody?) {
         throw MiddlewareError()
       }
@@ -262,9 +262,9 @@ struct ErrorTests {
     struct ContextPreservingMiddleware: ClientMiddleware {
       func intercept(
         _ request: HTTPRequest,
-        body: HTTPBody?,
+        body: sending HTTPBody?,
         baseURL: URL,
-        next: (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+        next: (HTTPRequest, sending HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
       ) async throws -> (HTTPResponse, HTTPBody?) {
         // Throw a pre-constructed ClientError
         let existingError = ClientError(

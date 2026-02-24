@@ -14,13 +14,29 @@ struct LoggingMiddlewareTests {
 
   /// A test log handler that captures log messages
   struct TestLogHandler: LogHandler {
-    struct LogEntry {
+    struct LogEntry: Sendable {
       let level: Logger.Level
-      let message: Logger.Message
+      let message: String
       let metadata: Logger.Metadata?
     }
 
-    let entries: UnsafeMutablePointer<[LogEntry]>
+    actor LogCollector {
+      private var entries: [LogEntry] = []
+
+      func append(_ entry: LogEntry) {
+        entries.append(entry)
+      }
+
+      func getEntries() -> [LogEntry] {
+        entries
+      }
+
+      func clear() {
+        entries.removeAll()
+      }
+    }
+
+    let collector: LogCollector
 
     var metadata: Logger.Metadata = [:]
     var logLevel: Logger.Level = .trace
@@ -39,8 +55,10 @@ struct LoggingMiddlewareTests {
       function: String,
       line: UInt
     ) {
-      let entry = LogEntry(level: level, message: message, metadata: metadata)
-      entries.pointee.append(entry)
+      let entry = LogEntry(level: level, message: "\(message)", metadata: metadata)
+      Task {
+        await collector.append(entry)
+      }
     }
   }
 
@@ -62,11 +80,8 @@ struct LoggingMiddlewareTests {
   // MARK: - Basic Logging Tests
 
   @Test func loggingMiddlewareLogsRequest() async throws {
-    let entriesPtr = UnsafeMutablePointer<[TestLogHandler.LogEntry]>.allocate(capacity: 1)
-    entriesPtr.initialize(to: [])
-    defer { entriesPtr.deallocate() }
-
-    let handler = TestLogHandler(entries: entriesPtr)
+    let collector = TestLogHandler.LogCollector()
+    let handler = TestLogHandler(collector: collector)
     var logger = Logger(label: "test")
     logger.handler = handler
 
@@ -82,27 +97,29 @@ struct LoggingMiddlewareTests {
     let request = HTTPRequest(method: .get, url: serverURL.appending(path: "test"))
     _ = try await client.send(request)
 
+    // Wait a bit for async logging to complete
+    try await Task.sleep(for: .milliseconds(100))
+
+    let entries = await collector.getEntries()
+
     // Should have logged both request and response
-    #expect(entriesPtr.pointee.count == 2)
+    #expect(entries.count == 2)
 
     // First log should be the request (with ⬆️)
-    let requestLog = entriesPtr.pointee[0]
+    let requestLog = entries[0]
     #expect(requestLog.level == .trace)
-    #expect(requestLog.message.description.contains("⬆️"))
-    #expect(requestLog.message.description.contains("GET"))
+    #expect(requestLog.message.contains("⬆️"))
+    #expect(requestLog.message.contains("GET"))
 
     // Second log should be the response (with ⬇️)
-    let responseLog = entriesPtr.pointee[1]
+    let responseLog = entries[1]
     #expect(responseLog.level == .trace)
-    #expect(responseLog.message.description.contains("⬇️"))
+    #expect(responseLog.message.contains("⬇️"))
   }
 
   @Test func loggingMiddlewareLogsResponse() async throws {
-    let entriesPtr = UnsafeMutablePointer<[TestLogHandler.LogEntry]>.allocate(capacity: 1)
-    entriesPtr.initialize(to: [])
-    defer { entriesPtr.deallocate() }
-
-    let handler = TestLogHandler(entries: entriesPtr)
+    let collector = TestLogHandler.LogCollector()
+    let handler = TestLogHandler(collector: collector)
     var logger = Logger(label: "test")
     logger.handler = handler
 
@@ -118,18 +135,18 @@ struct LoggingMiddlewareTests {
     let request = HTTPRequest(method: .post, url: serverURL.appending(path: "users"))
     _ = try await client.send(request)
 
-    #expect(entriesPtr.pointee.count == 2)
+    try await Task.sleep(for: .milliseconds(100))
 
-    let responseLog = entriesPtr.pointee[1]
-    #expect(responseLog.message.description.contains("201"))
+    let entries = await collector.getEntries()
+    #expect(entries.count == 2)
+
+    let responseLog = entries[1]
+    #expect(responseLog.message.contains("201"))
   }
 
   @Test func loggingMiddlewareAddsRequestID() async throws {
-    let entriesPtr = UnsafeMutablePointer<[TestLogHandler.LogEntry]>.allocate(capacity: 1)
-    entriesPtr.initialize(to: [])
-    defer { entriesPtr.deallocate() }
-
-    let handler = TestLogHandler(entries: entriesPtr)
+    let collector = TestLogHandler.LogCollector()
+    let handler = TestLogHandler(collector: collector)
     var logger = Logger(label: "test")
     logger.handler = handler
 
@@ -145,7 +162,10 @@ struct LoggingMiddlewareTests {
     let request = HTTPRequest(method: .get, url: serverURL.appending(path: "test"))
     _ = try await client.send(request)
 
-    #expect(entriesPtr.pointee.count == 2)
+    try await Task.sleep(for: .milliseconds(100))
+
+    let entries = await collector.getEntries()
+    #expect(entries.count == 2)
 
     // Both logs should have metadata (inherited from logger)
     // The request-id should be set
@@ -153,11 +173,8 @@ struct LoggingMiddlewareTests {
   }
 
   @Test func loggingMiddlewareWithoutMetadata() async throws {
-    let entriesPtr = UnsafeMutablePointer<[TestLogHandler.LogEntry]>.allocate(capacity: 1)
-    entriesPtr.initialize(to: [])
-    defer { entriesPtr.deallocate() }
-
-    let handler = TestLogHandler(entries: entriesPtr)
+    let collector = TestLogHandler.LogCollector()
+    let handler = TestLogHandler(collector: collector)
     var logger = Logger(label: "test")
     logger.handler = handler
 
@@ -173,15 +190,15 @@ struct LoggingMiddlewareTests {
     let request = HTTPRequest(method: .get, url: serverURL.appending(path: "test"))
     _ = try await client.send(request)
 
-    #expect(entriesPtr.pointee.count == 2)
+    try await Task.sleep(for: .milliseconds(100))
+
+    let entries = await collector.getEntries()
+    #expect(entries.count == 2)
   }
 
   @Test func loggingMiddlewarePreservesExistingRequestID() async throws {
-    let entriesPtr = UnsafeMutablePointer<[TestLogHandler.LogEntry]>.allocate(capacity: 1)
-    entriesPtr.initialize(to: [])
-    defer { entriesPtr.deallocate() }
-
-    let handler = TestLogHandler(entries: entriesPtr)
+    let collector = TestLogHandler.LogCollector()
+    let handler = TestLogHandler(collector: collector)
     var logger = Logger(label: "test")
     logger.handler = handler
     logger[metadataKey: "request-id"] = "existing-id"
@@ -198,16 +215,16 @@ struct LoggingMiddlewareTests {
     let request = HTTPRequest(method: .get, url: serverURL.appending(path: "test"))
     _ = try await client.send(request)
 
+    try await Task.sleep(for: .milliseconds(100))
+
     // Logs should be created
-    #expect(entriesPtr.pointee.count == 2)
+    let entries = await collector.getEntries()
+    #expect(entries.count == 2)
   }
 
   @Test func loggingMiddlewareLogsDifferentMethods() async throws {
-    let entriesPtr = UnsafeMutablePointer<[TestLogHandler.LogEntry]>.allocate(capacity: 1)
-    entriesPtr.initialize(to: [])
-    defer { entriesPtr.deallocate() }
-
-    let handler = TestLogHandler(entries: entriesPtr)
+    let collector = TestLogHandler.LogCollector()
+    let handler = TestLogHandler(collector: collector)
     var logger = Logger(label: "test")
     logger.handler = handler
 
@@ -223,15 +240,18 @@ struct LoggingMiddlewareTests {
     let methods: [HTTPRequest.Method] = [.get, .post, .put, .delete, .patch]
 
     for method in methods {
-      entriesPtr.pointee.removeAll()
+      await collector.clear()
 
       let request = HTTPRequest(method: method, url: serverURL.appending(path: "test"))
       _ = try await client.send(request)
 
-      #expect(entriesPtr.pointee.count == 2)
+      try await Task.sleep(for: .milliseconds(100))
 
-      let requestLog = entriesPtr.pointee[0]
-      #expect(requestLog.message.description.contains(method.rawValue))
+      let entries = await collector.getEntries()
+      #expect(entries.count == 2)
+
+      let requestLog = entries[0]
+      #expect(requestLog.message.contains(method.rawValue))
     }
   }
 
@@ -241,11 +261,8 @@ struct LoggingMiddlewareTests {
     ]
 
     for status in statuses {
-      let entriesPtr = UnsafeMutablePointer<[TestLogHandler.LogEntry]>.allocate(capacity: 1)
-      entriesPtr.initialize(to: [])
-      defer { entriesPtr.deallocate() }
-
-      let handler = TestLogHandler(entries: entriesPtr)
+      let collector = TestLogHandler.LogCollector()
+      let handler = TestLogHandler(collector: collector)
       var logger = Logger(label: "test")
       logger.handler = handler
 
@@ -261,28 +278,28 @@ struct LoggingMiddlewareTests {
       let request = HTTPRequest(method: .get, url: serverURL.appending(path: "test"))
       _ = try await client.send(request)
 
-      #expect(entriesPtr.pointee.count == 2)
+      try await Task.sleep(for: .milliseconds(100))
 
-      let responseLog = entriesPtr.pointee[1]
-      #expect(responseLog.message.description.contains(String(status.code)))
+      let entries = await collector.getEntries()
+      #expect(entries.count == 2)
+
+      let responseLog = entries[1]
+      #expect(responseLog.message.contains(String(status.code)))
     }
   }
 
   @Test func loggingMiddlewareWorksWithOtherMiddlewares() async throws {
-    let entriesPtr = UnsafeMutablePointer<[TestLogHandler.LogEntry]>.allocate(capacity: 1)
-    entriesPtr.initialize(to: [])
-    defer { entriesPtr.deallocate() }
-
-    let handler = TestLogHandler(entries: entriesPtr)
+    let collector = TestLogHandler.LogCollector()
+    let handler = TestLogHandler(collector: collector)
     var logger = Logger(label: "test")
     logger.handler = handler
 
     struct TestMiddleware: ClientMiddleware {
       func intercept(
         _ request: HTTPRequest,
-        body: HTTPBody?,
+        body: sending HTTPBody?,
         baseURL: URL,
-        next: (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+        next: (HTTPRequest, sending HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
       ) async throws -> (HTTPResponse, HTTPBody?) {
         var request = request
         request.headerFields[.init("X-Test")!] = "test"
@@ -303,16 +320,16 @@ struct LoggingMiddlewareTests {
     let request = HTTPRequest(method: .get, url: serverURL.appending(path: "test"))
     _ = try await client.send(request)
 
+    try await Task.sleep(for: .milliseconds(100))
+
     // Logging middleware should have logged
-    #expect(entriesPtr.pointee.count == 2)
+    let entries = await collector.getEntries()
+    #expect(entries.count == 2)
   }
 
   @Test func loggingMiddlewareLogsErrors() async throws {
-    let entriesPtr = UnsafeMutablePointer<[TestLogHandler.LogEntry]>.allocate(capacity: 1)
-    entriesPtr.initialize(to: [])
-    defer { entriesPtr.deallocate() }
-
-    let handler = TestLogHandler(entries: entriesPtr)
+    let collector = TestLogHandler.LogCollector()
+    let handler = TestLogHandler(collector: collector)
     var logger = Logger(label: "test")
     logger.handler = handler
 
@@ -346,9 +363,12 @@ struct LoggingMiddlewareTests {
       // Expected to throw
     }
 
+    try await Task.sleep(for: .milliseconds(100))
+
     // Request should still be logged
-    #expect(entriesPtr.pointee.count >= 1)
-    let requestLog = entriesPtr.pointee[0]
-    #expect(requestLog.message.description.contains("⬆️"))
+    let entries = await collector.getEntries()
+    #expect(entries.count >= 1)
+    let requestLog = entries[0]
+    #expect(requestLog.message.contains("⬆️"))
   }
 }

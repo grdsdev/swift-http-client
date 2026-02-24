@@ -31,7 +31,7 @@ import HTTPTypes
 /// - https://www.w3.org/TR/html401/interact/forms.html#h-17.13
 ///
 /// > Note: This implementation is adapted from Alamofire's MultipartFormData implementation.
-public final class MultipartFormData: Sendable {
+public final class MultipartFormData {
   // MARK: - Helper Types
 
   enum EncodingCharacters {
@@ -65,7 +65,7 @@ public final class MultipartFormData: Sendable {
     }
   }
 
-  final class BodyPart: @unchecked Sendable {
+  final class BodyPart {
     let headers: HTTPFields
     let bodyStream: InputStream
     let bodyContentLength: UInt64
@@ -85,7 +85,7 @@ public final class MultipartFormData: Sendable {
     public let reason: Reason
 
     /// The detailed reason for the encoding failure.
-    public enum Reason {
+    public enum Reason: Sendable {
       case bodyPartURLInvalid(url: URL)
       case bodyPartFilenameInvalid(in: URL)
       case bodyPartFileNotReachable(at: URL)
@@ -159,14 +159,14 @@ public final class MultipartFormData: Sendable {
 
   /// The content length of all body parts used to generate the `multipart/form-data` not including the boundaries.
   public var contentLength: UInt64 {
-    lock.withLock { bodyParts.reduce(0) { $0 + $1.bodyContentLength } }
+    bodyParts.reduce(0) { $0 + $1.bodyContentLength }
   }
 
   /// The boundary used to separate the body parts in the encoded form data.
   public let boundary: String
 
   private let fileManager: FileManager
-  private let lock = NSLock()
+  // private let lock = NSLock()
   private var bodyParts: [BodyPart] = []
   private var bodyPartError: EncodingError?
   private let streamBufferSize: Int
@@ -377,9 +377,7 @@ public final class MultipartFormData: Sendable {
   ///   - headers: `HTTPFields` for the body part.
   public func append(_ stream: InputStream, withLength length: UInt64, headers: HTTPFields) {
     let bodyPart = BodyPart(headers: headers, bodyStream: stream, bodyContentLength: length)
-    lock.withLock {
-      bodyParts.append(bodyPart)
-    }
+    bodyParts.append(bodyPart)
   }
 
   // MARK: - Data Encoding
@@ -392,19 +390,17 @@ public final class MultipartFormData: Sendable {
   ///
   /// - Returns: The encoded `Data`, if encoding is successful.
   /// - Throws:  An `EncodingError` if encoding encounters an error.
-  public func encode() throws -> Data {
+  public consuming func encode() throws -> Data {
     if let bodyPartError {
       throw bodyPartError
     }
 
     var encoded = Data()
 
-    lock.withLock {
-      bodyParts.first?.hasInitialBoundary = true
-      bodyParts.last?.hasFinalBoundary = true
-    }
+    bodyParts.first?.hasInitialBoundary = true
+    bodyParts.last?.hasFinalBoundary = true
 
-    let parts = lock.withLock { bodyParts }
+    let parts = bodyParts
     for bodyPart in parts {
       let encodedData = try encode(bodyPart)
       encoded.append(encodedData)
@@ -420,7 +416,7 @@ public final class MultipartFormData: Sendable {
   ///
   /// - Parameter fileURL: File `URL` to which to write the form data.
   /// - Throws:            An `EncodingError` if encoding encounters an error.
-  public func writeEncodedData(to fileURL: URL) throws {
+  public consuming func writeEncodedData(to fileURL: URL) throws {
     if let bodyPartError {
       throw bodyPartError
     }
@@ -438,12 +434,10 @@ public final class MultipartFormData: Sendable {
     outputStream.open()
     defer { outputStream.close() }
 
-    lock.withLock {
-      bodyParts.first?.hasInitialBoundary = true
-      bodyParts.last?.hasFinalBoundary = true
-    }
+    bodyParts.first?.hasInitialBoundary = true
+    bodyParts.last?.hasFinalBoundary = true
 
-    let parts = lock.withLock { bodyParts }
+    let parts = bodyParts
     for bodyPart in parts {
       try write(bodyPart, to: outputStream)
     }
@@ -634,10 +628,8 @@ public final class MultipartFormData: Sendable {
   // MARK: - Private - Errors
 
   private func setBodyPartError(withReason reason: EncodingError.Reason) {
-    lock.withLock {
-      guard bodyPartError == nil else { return }
-      bodyPartError = EncodingError(reason: reason)
-    }
+    guard bodyPartError == nil else { return }
+    bodyPartError = EncodingError(reason: reason)
   }
 }
 

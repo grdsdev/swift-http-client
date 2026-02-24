@@ -15,9 +15,9 @@ struct MiddlewareTests {
 
     func intercept(
       _ request: HTTPRequest,
-      body: HTTPBody?,
+      body: sending HTTPBody?,
       baseURL: URL,
-      next: (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+      next: (HTTPRequest, sending HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
     ) async throws -> (HTTPResponse, HTTPBody?) {
       var request = request
       request.headerFields[.authorization] = "Bearer \(token)"
@@ -31,9 +31,9 @@ struct MiddlewareTests {
 
     func intercept(
       _ request: HTTPRequest,
-      body: HTTPBody?,
+      body: sending HTTPBody?,
       baseURL: URL,
-      next: (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+      next: (HTTPRequest, sending HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
     ) async throws -> (HTTPResponse, HTTPBody?) {
       var request = request
       request.headerFields[.userAgent] = userAgent
@@ -47,9 +47,9 @@ struct MiddlewareTests {
 
     func intercept(
       _ request: HTTPRequest,
-      body: HTTPBody?,
+      body: sending HTTPBody?,
       baseURL: URL,
-      next: (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+      next: (HTTPRequest, sending HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
     ) async throws -> (HTTPResponse, HTTPBody?) {
       var lastError: Error?
 
@@ -71,13 +71,13 @@ struct MiddlewareTests {
 
   /// Response interceptor middleware
   struct ResponseInterceptorMiddleware: ClientMiddleware {
-    var onResponse: ((HTTPResponse, HTTPBody?) -> Void)?
+    var onResponse: (@Sendable (HTTPResponse, HTTPBody?) -> Void)?
 
     func intercept(
       _ request: HTTPRequest,
-      body: HTTPBody?,
+      body: sending HTTPBody?,
       baseURL: URL,
-      next: (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+      next: (HTTPRequest, sending HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
     ) async throws -> (HTTPResponse, HTTPBody?) {
       let (response, responseBody) = try await next(request, body, baseURL)
       onResponse?(response, responseBody)
@@ -91,9 +91,9 @@ struct MiddlewareTests {
 
     func intercept(
       _ request: HTTPRequest,
-      body: HTTPBody?,
+      body: sending HTTPBody?,
       baseURL: URL,
-      next: (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+      next: (HTTPRequest, sending HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
     ) async throws -> (HTTPResponse, HTTPBody?) {
       var request = request
       for (key, value) in headers {
@@ -110,7 +110,7 @@ struct MiddlewareTests {
   struct MockTransport: ClientTransport {
     let responseStatus: HTTPResponse.Status
     let responseBody: String?
-    var onSend: ((HTTPRequest) -> Void)?
+    var onSend: (@Sendable (HTTPRequest) -> Void)?
 
     func send(
       _ request: HTTPRequest,
@@ -141,13 +141,13 @@ struct MiddlewareTests {
 
   @Test func authMiddlewareAddsToken() async throws {
     let serverURL = URL(string: "https://api.example.com")!
-    var capturedRequest: HTTPRequest?
+    let capturedRequest = SendableBox<HTTPRequest?>(nil)
 
     let transport = MockTransport(
       responseStatus: .ok,
       responseBody: nil,
       onSend: { request in
-        capturedRequest = request
+        capturedRequest.withLock { $0 = request }
       }
     )
 
@@ -161,20 +161,20 @@ struct MiddlewareTests {
     let request = HTTPRequest(method: .get, url: serverURL.appending(path: "protected"))
     _ = try await client.send(request)
 
-    #expect(capturedRequest?.headerFields[.authorization] == "Bearer secret-token-123")
+    #expect(capturedRequest.value?.headerFields[.authorization] == "Bearer secret-token-123")
   }
 
   // MARK: - User-Agent Middleware Tests
 
   @Test func userAgentMiddlewareAddsHeader() async throws {
     let serverURL = URL(string: "https://api.example.com")!
-    var capturedRequest: HTTPRequest?
+    let capturedRequest = SendableBox<HTTPRequest?>(nil)
 
     let transport = MockTransport(
       responseStatus: .ok,
       responseBody: nil,
       onSend: { request in
-        capturedRequest = request
+        capturedRequest.withLock { $0 = request }
       }
     )
 
@@ -188,20 +188,20 @@ struct MiddlewareTests {
     let request = HTTPRequest(method: .get, url: serverURL.appending(path: "test"))
     _ = try await client.send(request)
 
-    #expect(capturedRequest?.headerFields[.userAgent] == "MyApp/1.0")
+    #expect(capturedRequest.value?.headerFields[.userAgent] == "MyApp/1.0")
   }
 
   // MARK: - Multiple Middleware Tests
 
   @Test func multipleMiddlewaresStackCorrectly() async throws {
     let serverURL = URL(string: "https://api.example.com")!
-    var capturedRequest: HTTPRequest?
+    let capturedRequest = SendableBox<HTTPRequest?>(nil)
 
     let transport = MockTransport(
       responseStatus: .ok,
       responseBody: nil,
       onSend: { request in
-        capturedRequest = request
+        capturedRequest.withLock { $0 = request }
       }
     )
 
@@ -217,21 +217,21 @@ struct MiddlewareTests {
     let request = HTTPRequest(method: .get, url: serverURL.appending(path: "test"))
     _ = try await client.send(request)
 
-    #expect(capturedRequest?.headerFields[.authorization] == "Bearer token")
-    #expect(capturedRequest?.headerFields[.userAgent] == "MyApp/1.0")
+    #expect(capturedRequest.value?.headerFields[.authorization] == "Bearer token")
+    #expect(capturedRequest.value?.headerFields[.userAgent] == "MyApp/1.0")
   }
 
   // MARK: - Response Interceptor Tests
 
   @Test func responseInterceptorReceivesResponse() async throws {
     let serverURL = URL(string: "https://api.example.com")!
-    var interceptedStatus: HTTPResponse.Status?
+    let interceptedStatus = SendableBox<HTTPResponse.Status?>(nil)
 
     let transport = MockTransport(responseStatus: .created, responseBody: "Created")
 
     let interceptor = ResponseInterceptorMiddleware(
       onResponse: { response, _ in
-        interceptedStatus = response.status
+        interceptedStatus.withLock { $0 = response.status }
       }
     )
 
@@ -244,20 +244,20 @@ struct MiddlewareTests {
     let request = HTTPRequest(method: .post, url: serverURL.appending(path: "test"))
     _ = try await client.send(request)
 
-    #expect(interceptedStatus == .created)
+    #expect(interceptedStatus.value == .created)
   }
 
   // MARK: - Custom Headers Tests
 
   @Test func customHeaderMiddleware() async throws {
     let serverURL = URL(string: "https://api.example.com")!
-    var capturedRequest: HTTPRequest?
+    let capturedRequest = SendableBox<HTTPRequest?>(nil)
 
     let transport = MockTransport(
       responseStatus: .ok,
       responseBody: nil,
       onSend: { request in
-        capturedRequest = request
+        capturedRequest.withLock { $0 = request }
       }
     )
 
@@ -276,41 +276,50 @@ struct MiddlewareTests {
     let request = HTTPRequest(method: .get, url: serverURL.appending(path: "test"))
     _ = try await client.send(request)
 
-    #expect(capturedRequest?.headerFields[.init("X-API-Version")!] == "v1")
-    #expect(capturedRequest?.headerFields[.init("X-Client-ID")!] == "client-123")
+    #expect(capturedRequest.value?.headerFields[.init("X-API-Version")!] == "v1")
+    #expect(capturedRequest.value?.headerFields[.init("X-Client-ID")!] == "client-123")
   }
 
   // MARK: - Middleware Order Tests
 
   @Test func middlewareExecutionOrder() async throws {
     let serverURL = URL(string: "https://api.example.com")!
-    var executionOrder: [String] = []
+
+    actor ExecutionOrderTracker {
+      private var order: [String] = []
+
+      func append(_ item: String) {
+        order.append(item)
+      }
+
+      func getOrder() -> [String] {
+        order
+      }
+    }
 
     struct OrderTrackingMiddleware: ClientMiddleware {
       let name: String
-      let executionOrder: UnsafeMutablePointer<[String]>
+      let tracker: ExecutionOrderTracker
 
       func intercept(
         _ request: HTTPRequest,
-        body: HTTPBody?,
+        body: sending HTTPBody?,
         baseURL: URL,
-        next: (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+        next: (HTTPRequest, sending HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
       ) async throws -> (HTTPResponse, HTTPBody?) {
-        executionOrder.pointee.append("\(name)-before")
+        await tracker.append("\(name)-before")
         let result = try await next(request, body, baseURL)
-        executionOrder.pointee.append("\(name)-after")
+        await tracker.append("\(name)-after")
         return result
       }
     }
 
     let transport = MockTransport(responseStatus: .ok, responseBody: nil)
 
-    let orderPtr = UnsafeMutablePointer<[String]>.allocate(capacity: 1)
-    orderPtr.initialize(to: [])
-    defer { orderPtr.deallocate() }
+    let tracker = ExecutionOrderTracker()
 
-    let middleware1 = OrderTrackingMiddleware(name: "first", executionOrder: orderPtr)
-    let middleware2 = OrderTrackingMiddleware(name: "second", executionOrder: orderPtr)
+    let middleware1 = OrderTrackingMiddleware(name: "first", tracker: tracker)
+    let middleware2 = OrderTrackingMiddleware(name: "second", tracker: tracker)
 
     let client = Client(
       serverURL: serverURL,
@@ -322,7 +331,8 @@ struct MiddlewareTests {
     _ = try await client.send(request)
 
     // Middlewares execute in order before, then reverse order after
-    #expect(orderPtr.pointee == ["first-before", "second-before", "second-after", "first-after"])
+    let executionOrder = await tracker.getOrder()
+    #expect(executionOrder == ["first-before", "second-before", "second-after", "first-after"])
   }
 
   // MARK: - Middleware Error Handling
@@ -335,9 +345,9 @@ struct MiddlewareTests {
 
       func intercept(
         _ request: HTTPRequest,
-        body: HTTPBody?,
+        body: sending HTTPBody?,
         baseURL: URL,
-        next: (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+        next: (HTTPRequest, sending HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
       ) async throws -> (HTTPResponse, HTTPBody?) {
         do {
           return try await next(request, body, baseURL)
@@ -369,14 +379,13 @@ struct MiddlewareTests {
 
   @Test func middlewareCanModifyRequestBody() async throws {
     let serverURL = URL(string: "https://api.example.com")!
-    var capturedBodyContent: String?
 
     struct BodyModifyingMiddleware: ClientMiddleware {
       func intercept(
         _ request: HTTPRequest,
-        body: HTTPBody?,
+        body: sending HTTPBody?,
         baseURL: URL,
-        next: (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+        next: (HTTPRequest, sending HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
       ) async throws -> (HTTPResponse, HTTPBody?) {
         // Wrap the body with additional content
         let modifiedBody = HTTPBody("modified-")
@@ -405,21 +414,21 @@ struct MiddlewareTests {
     _ = try await client.send(request, body: originalBody)
 
     // The middleware modified the body (verification would require async body capture)
-    #expect(true)
+    #expect(Bool(true))
   }
 
   // MARK: - Conditional Middleware
 
   @Test func conditionalMiddleware() async throws {
     let serverURL = URL(string: "https://api.example.com")!
-    var headerWasAdded = false
+    let headerWasAdded = SendableBox<Bool>(false)
 
     struct ConditionalMiddleware: ClientMiddleware {
       func intercept(
         _ request: HTTPRequest,
-        body: HTTPBody?,
+        body: sending HTTPBody?,
         baseURL: URL,
-        next: (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+        next: (HTTPRequest, sending HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
       ) async throws -> (HTTPResponse, HTTPBody?) {
         var request = request
 
@@ -436,7 +445,7 @@ struct MiddlewareTests {
       responseStatus: .ok,
       responseBody: nil,
       onSend: { request in
-        headerWasAdded = request.headerFields[.init("X-POST-Only")!] != nil
+        headerWasAdded.withLock { $0 = request.headerFields[.init("X-POST-Only")!] != nil }
       }
     )
 
@@ -450,12 +459,12 @@ struct MiddlewareTests {
     // Test GET request - header should not be added
     let getRequest = HTTPRequest(method: .get, url: serverURL.appending(path: "test"))
     _ = try await client.send(getRequest)
-    #expect(headerWasAdded == false)
+    #expect(headerWasAdded.value == false)
 
     // Test POST request - header should be added
     let postRequest = HTTPRequest(method: .post, url: serverURL.appending(path: "test"))
     _ = try await client.send(postRequest)
-    #expect(headerWasAdded == true)
+    #expect(headerWasAdded.value == true)
   }
 
   // MARK: - State Tracking Middleware
@@ -480,9 +489,9 @@ struct MiddlewareTests {
 
       func intercept(
         _ request: HTTPRequest,
-        body: HTTPBody?,
+        body: sending HTTPBody?,
         baseURL: URL,
-        next: (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+        next: (HTTPRequest, sending HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
       ) async throws -> (HTTPResponse, HTTPBody?) {
         await counter.increment()
         return try await next(request, body, baseURL)

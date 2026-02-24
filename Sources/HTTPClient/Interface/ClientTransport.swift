@@ -103,7 +103,7 @@ public protocol ClientTransport: Sendable {
   /// - Throws: An error if sending the request and receiving the response fails.
   func send(
     _ request: HTTPRequest,
-    body: HTTPBody?,
+    body: sending HTTPBody?,
     baseURL: URL
   ) async throws -> (HTTPResponse, HTTPBody?)
 }
@@ -207,8 +207,8 @@ public protocol ClientMiddleware: Sendable {
   /// - Throws: An error if interception of the request and response fails.
   func intercept(
     _ request: HTTPRequest,
-    body: HTTPBody?,
+    body: sending HTTPBody?,
     baseURL: URL,
-    next: @Sendable (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+    next: @Sendable (HTTPRequest, sending HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
   ) async throws -> (HTTPResponse, HTTPBody?)
 }

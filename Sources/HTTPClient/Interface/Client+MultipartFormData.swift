@@ -126,7 +126,7 @@ extension Client {
   ///
   /// - SeeAlso: ``MultipartFormData``
   public func send(
-    multipartFormData: MultipartFormData,
+    multipartFormData: sending MultipartFormData,
     with request: HTTPRequest,
     usingThreshold encodingMemoryThreshold: UInt64 = MultipartFormData.encodingMemoryThreshold
   ) async throws -> (HTTPResponse, HTTPBody?) {

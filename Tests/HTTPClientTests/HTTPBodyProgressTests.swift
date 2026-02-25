@@ -75,18 +75,19 @@ struct HTTPBodyProgressTests {
     let data = Data("Hello, World!".utf8)
     let body = HTTPBody(data)
 
-    var progressUpdates: [Progress] = []
+    let progressUpdates = SendableBox<[Progress]>([])
     let trackedBody = body.trackingProgress { progress in
-      progressUpdates.append(progress)
+      progressUpdates.withLock { $0.append(progress) }
     }
 
     // Consume the body
     for try await _ in trackedBody {}
 
-    #expect(progressUpdates.count == 1)
-    #expect(progressUpdates[0].completed == 13)
-    #expect(progressUpdates[0].total == 13)
-    #expect(progressUpdates[0].fractionCompleted == 1.0)
+    let updates = progressUpdates.value
+    #expect(updates.count == 1)
+    #expect(updates[0].completed == 13)
+    #expect(updates[0].total == 13)
+    #expect(updates[0].fractionCompleted == 1.0)
   }
 
   @Test func trackingProgressWithMultipleChunks() async throws {
@@ -97,30 +98,31 @@ struct HTTPBodyProgressTests {
     ]
     let body = HTTPBody(chunks, length: .known(13), iterationBehavior: .multiple)
 
-    var progressUpdates: [Progress] = []
+    let progressUpdates = SendableBox<[Progress]>([])
     let trackedBody = body.trackingProgress { progress in
-      progressUpdates.append(progress)
+      progressUpdates.withLock { $0.append(progress) }
     }
 
     // Consume the body
     for try await _ in trackedBody {}
 
-    #expect(progressUpdates.count == 3)
+    let updates = progressUpdates.value
+    #expect(updates.count == 3)
 
     // First chunk: "Hello" (5 bytes)
-    #expect(progressUpdates[0].completed == 5)
-    #expect(progressUpdates[0].total == 13)
-    #expect(progressUpdates[0].fractionCompleted == 5.0 / 13.0)
+    #expect(updates[0].completed == 5)
+    #expect(updates[0].total == 13)
+    #expect(updates[0].fractionCompleted == 5.0 / 13.0)
 
     // Second chunk: ", " (2 bytes, cumulative 7)
-    #expect(progressUpdates[1].completed == 7)
-    #expect(progressUpdates[1].total == 13)
-    #expect(progressUpdates[1].fractionCompleted == 7.0 / 13.0)
+    #expect(updates[1].completed == 7)
+    #expect(updates[1].total == 13)
+    #expect(updates[1].fractionCompleted == 7.0 / 13.0)
 
     // Third chunk: "World!" (6 bytes, cumulative 13)
-    #expect(progressUpdates[2].completed == 13)
-    #expect(progressUpdates[2].total == 13)
-    #expect(progressUpdates[2].fractionCompleted == 1.0)
+    #expect(updates[2].completed == 13)
+    #expect(updates[2].total == 13)
+    #expect(updates[2].fractionCompleted == 1.0)
   }
 
   @Test func trackingProgressWithUnknownLength() async throws {
@@ -130,40 +132,41 @@ struct HTTPBodyProgressTests {
     ]
     let body = HTTPBody(chunks, length: .unknown, iterationBehavior: .multiple)
 
-    var progressUpdates: [Progress] = []
+    let progressUpdates = SendableBox<[Progress]>([])
     let trackedBody = body.trackingProgress { progress in
-      progressUpdates.append(progress)
+      progressUpdates.withLock { $0.append(progress) }
     }
 
     // Consume the body
     for try await _ in trackedBody {}
 
-    #expect(progressUpdates.count == 2)
+    let updates = progressUpdates.value
+    #expect(updates.count == 2)
 
     // First chunk
-    #expect(progressUpdates[0].completed == 5)
-    #expect(progressUpdates[0].total == nil)
-    #expect(progressUpdates[0].fractionCompleted == nil)
+    #expect(updates[0].completed == 5)
+    #expect(updates[0].total == nil)
+    #expect(updates[0].fractionCompleted == nil)
 
     // Second chunk
-    #expect(progressUpdates[1].completed == 10)
-    #expect(progressUpdates[1].total == nil)
-    #expect(progressUpdates[1].fractionCompleted == nil)
+    #expect(updates[1].completed == 10)
+    #expect(updates[1].total == nil)
+    #expect(updates[1].fractionCompleted == nil)
   }
 
   @Test func trackingProgressWithEmptyBody() async throws {
     let body = HTTPBody()
 
-    var progressUpdates: [Progress] = []
+    let progressUpdates = SendableBox<[Progress]>([])
     let trackedBody = body.trackingProgress { progress in
-      progressUpdates.append(progress)
+      progressUpdates.withLock { $0.append(progress) }
     }
 
     // Consume the body
     for try await _ in trackedBody {}
 
     // No chunks, so no progress updates
-    #expect(progressUpdates.isEmpty)
+    #expect(progressUpdates.value.isEmpty)
   }
 
   @Test func trackingProgressPreservesBodyLength() {
@@ -202,18 +205,19 @@ struct HTTPBodyProgressTests {
     let totalSize = Int64(chunkSize * numChunks)
     let body = HTTPBody(chunks, length: .known(totalSize), iterationBehavior: .multiple)
 
-    var progressUpdates: [Progress] = []
+    let progressUpdates = SendableBox<[Progress]>([])
     let trackedBody = body.trackingProgress { progress in
-      progressUpdates.append(progress)
+      progressUpdates.withLock { $0.append(progress) }
     }
 
     // Consume the body
     for try await _ in trackedBody {}
 
-    #expect(progressUpdates.count == numChunks)
+    let updates = progressUpdates.value
+    #expect(updates.count == numChunks)
 
     // Verify cumulative progress
-    for (index, progress) in progressUpdates.enumerated() {
+    for (index, progress) in updates.enumerated() {
       let expectedCompleted = Int64(chunkSize * (index + 1))
       #expect(progress.completed == expectedCompleted)
       #expect(progress.total == totalSize)
@@ -223,7 +227,7 @@ struct HTTPBodyProgressTests {
     }
 
     // Last update should be 100% complete
-    #expect(progressUpdates.last?.fractionCompleted == 1.0)
+    #expect(updates.last?.fractionCompleted == 1.0)
   }
 
   @Test func trackingProgressWithAsyncStream() async throws {
@@ -239,16 +243,17 @@ struct HTTPBodyProgressTests {
     let totalLength = chunks.joined().count
     let body = HTTPBody(stream, length: .known(Int64(totalLength)))
 
-    var progressUpdates: [Progress] = []
+    let progressUpdates = SendableBox<[Progress]>([])
     let trackedBody = body.trackingProgress { progress in
-      progressUpdates.append(progress)
+      progressUpdates.withLock { $0.append(progress) }
     }
 
     // Consume the body
     for try await _ in trackedBody {}
 
-    #expect(progressUpdates.count == 3)
-    #expect(progressUpdates.last?.completed == Int64(totalLength))
+    let updates = progressUpdates.value
+    #expect(updates.count == 3)
+    #expect(updates.last?.completed == Int64(totalLength))
   }
 
   @Test func trackingProgressHandlerCalledInOrder() async throws {
@@ -259,16 +264,16 @@ struct HTTPBodyProgressTests {
     ]
     let body = HTTPBody(chunks, length: .known(3), iterationBehavior: .multiple)
 
-    var completedValues: [Int64] = []
+    let completedValues = SendableBox<[Int64]>([])
     let trackedBody = body.trackingProgress { progress in
-      completedValues.append(progress.completed)
+      completedValues.withLock { $0.append(progress.completed) }
     }
 
     // Consume the body
     for try await _ in trackedBody {}
 
     // Verify progress is monotonically increasing
-    #expect(completedValues == [1, 2, 3])
+    #expect(completedValues.value == [1, 2, 3])
   }
 
   @Test func trackingProgressDoesNotModifyChunks() async throws {
@@ -290,27 +295,27 @@ struct HTTPBodyProgressTests {
     ]
     let body = HTTPBody(chunks, length: .known(4), iterationBehavior: .multiple)
 
-    var firstIterationUpdates: [Progress] = []
+    let firstUpdates = SendableBox<[Progress]>([])
     let trackedBody = body.trackingProgress { progress in
-      firstIterationUpdates.append(progress)
+      firstUpdates.withLock { $0.append(progress) }
     }
 
     // First iteration
     for try await _ in trackedBody {}
 
-    #expect(firstIterationUpdates.count == 2)
+    #expect(firstUpdates.value.count == 2)
 
     // Note: Second iteration would create a new tracked body
     // as trackingProgress returns a new HTTPBody instance
-    var secondIterationUpdates: [Progress] = []
+    let secondUpdates = SendableBox<[Progress]>([])
     let trackedBody2 = body.trackingProgress { progress in
-      secondIterationUpdates.append(progress)
+      secondUpdates.withLock { $0.append(progress) }
     }
 
     // Second iteration
     for try await _ in trackedBody2 {}
 
-    #expect(secondIterationUpdates.count == 2)
+    #expect(secondUpdates.value.count == 2)
   }
 
   @Test func progressFractionCompletedEdgeCases() {
@@ -331,18 +336,19 @@ struct HTTPBodyProgressTests {
     ]
     let body = HTTPBody(chunks, length: .known(5), iterationBehavior: .multiple)
 
-    var progressUpdates: [Progress] = []
+    let progressUpdates = SendableBox<[Progress]>([])
     let trackedBody = body.trackingProgress { progress in
-      progressUpdates.append(progress)
+      progressUpdates.withLock { $0.append(progress) }
     }
 
     // Consume the body
     for try await _ in trackedBody {}
 
     // Should have 3 updates (one for each chunk, even zero-sized ones)
-    #expect(progressUpdates.count == 3)
-    #expect(progressUpdates[0].completed == 0)  // Empty chunk
-    #expect(progressUpdates[1].completed == 5)  // "Hello"
-    #expect(progressUpdates[2].completed == 5)  // Empty chunk (no change)
+    let updates = progressUpdates.value
+    #expect(updates.count == 3)
+    #expect(updates[0].completed == 0)  // Empty chunk
+    #expect(updates[1].completed == 5)  // "Hello"
+    #expect(updates[2].completed == 5)  // Empty chunk (no change)
   }
 }

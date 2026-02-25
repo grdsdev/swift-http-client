@@ -19,9 +19,9 @@ public struct LoggingMiddleware: ClientMiddleware {
 
   public func intercept(
     _ request: HTTPRequest,
-    body: HTTPBody?,
+    body: sending HTTPBody?,
     baseURL: URL,
-    next: (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+    next: (HTTPRequest, sending HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
   ) async throws -> (HTTPResponse, HTTPBody?) {
     var logger = logger
     if includeMetadata, logger[metadataKey: "request-id"] == nil {

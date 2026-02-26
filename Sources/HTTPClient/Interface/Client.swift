@@ -33,14 +33,18 @@ public struct Client: Sendable {
   public var middlewares: [any ClientMiddleware]
 
   /// Creates a new client.
+  // / - Parameters:
+  ///   - serverURL: The URL of the server, used as the base URL for requests made by the client.
+  ///   - transport: A type capable of sending HTTP requests and receiving HTTP responses.
+  ///   - middlewares: The middlewares to be invoked before the transport. If not provided, a default middleware that adds default headers to requests will be used.
   public init(
     serverURL: URL,
     transport: any ClientTransport,
-    middlewares: [any ClientMiddleware] = []
+    middlewares: [any ClientMiddleware]? = nil
   ) {
     self.serverURL = serverURL
     self.transport = transport
-    self.middlewares = middlewares
+    self.middlewares = middlewares ?? [DefaultHeadersMiddleware()]
   }
 
   /// Sends the HTTP request and returns the HTTP response.

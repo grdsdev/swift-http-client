@@ -89,7 +89,9 @@ struct ClientTests {
     let client = Client(serverURL: serverURL, transport: transport)
 
     #expect(client.serverURL == serverURL)
-    #expect(client.middlewares.isEmpty)
+    #expect(
+      client.middlewares.isEmpty == false,
+      "Default middleware should be added when no middlewares are provided")
   }
 
   @Test func clientInitializationWithMiddlewares() {

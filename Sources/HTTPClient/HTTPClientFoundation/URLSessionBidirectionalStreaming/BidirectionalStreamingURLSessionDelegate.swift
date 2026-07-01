@@ -199,6 +199,10 @@ import HTTPTypes
           responseContinuation?.resume(throwing: error)
           responseContinuation = nil
         }
+
+        // Propagate the error to the stream bridge.
+        requestStream?.cancel(error: error)
+        requestStream = nil
       }
     }
   }

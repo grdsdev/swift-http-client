@@ -34,6 +34,12 @@ struct LoggingMiddlewareTests {
       func clear() {
         entries.removeAll()
       }
+
+      func waitForEntries(count: Int) async {
+        while entries.count < count {
+          await Task.yield()
+        }
+      }
     }
 
     let collector: LogCollector
@@ -98,7 +104,7 @@ struct LoggingMiddlewareTests {
     _ = try await client.send(request)
 
     // Wait a bit for async logging to complete
-    try await Task.sleep(for: .milliseconds(100))
+    await collector.waitForEntries(count: 2)
 
     let entries = await collector.getEntries()
 
@@ -135,7 +141,7 @@ struct LoggingMiddlewareTests {
     let request = HTTPRequest(method: .post, url: serverURL.appending(path: "users"))
     _ = try await client.send(request)
 
-    try await Task.sleep(for: .milliseconds(100))
+    await collector.waitForEntries(count: 2)
 
     let entries = await collector.getEntries()
     #expect(entries.count == 2)
@@ -162,7 +168,7 @@ struct LoggingMiddlewareTests {
     let request = HTTPRequest(method: .get, url: serverURL.appending(path: "test"))
     _ = try await client.send(request)
 
-    try await Task.sleep(for: .milliseconds(100))
+    await collector.waitForEntries(count: 2)
 
     let entries = await collector.getEntries()
     #expect(entries.count == 2)
@@ -190,7 +196,7 @@ struct LoggingMiddlewareTests {
     let request = HTTPRequest(method: .get, url: serverURL.appending(path: "test"))
     _ = try await client.send(request)
 
-    try await Task.sleep(for: .milliseconds(100))
+    await collector.waitForEntries(count: 2)
 
     let entries = await collector.getEntries()
     #expect(entries.count == 2)
@@ -215,7 +221,7 @@ struct LoggingMiddlewareTests {
     let request = HTTPRequest(method: .get, url: serverURL.appending(path: "test"))
     _ = try await client.send(request)
 
-    try await Task.sleep(for: .milliseconds(100))
+    await collector.waitForEntries(count: 2)
 
     // Logs should be created
     let entries = await collector.getEntries()
@@ -245,12 +251,12 @@ struct LoggingMiddlewareTests {
       let request = HTTPRequest(method: method, url: serverURL.appending(path: "test"))
       _ = try await client.send(request)
 
-      try await Task.sleep(for: .milliseconds(100))
+      await collector.waitForEntries(count: 2)
 
       let entries = await collector.getEntries()
       #expect(entries.count == 2)
 
-      let requestLog = entries[0]
+      let requestLog = try #require(entries.first(where: { $0.message.contains("⬆️") }))
       #expect(requestLog.message.contains(method.rawValue))
     }
   }
@@ -278,7 +284,7 @@ struct LoggingMiddlewareTests {
       let request = HTTPRequest(method: .get, url: serverURL.appending(path: "test"))
       _ = try await client.send(request)
 
-      try await Task.sleep(for: .milliseconds(100))
+      await collector.waitForEntries(count: 2)
 
       let entries = await collector.getEntries()
       #expect(entries.count == 2)
@@ -320,7 +326,7 @@ struct LoggingMiddlewareTests {
     let request = HTTPRequest(method: .get, url: serverURL.appending(path: "test"))
     _ = try await client.send(request)
 
-    try await Task.sleep(for: .milliseconds(100))
+    await collector.waitForEntries(count: 2)
 
     // Logging middleware should have logged
     let entries = await collector.getEntries()
@@ -363,7 +369,7 @@ struct LoggingMiddlewareTests {
       // Expected to throw
     }
 
-    try await Task.sleep(for: .milliseconds(100))
+    await collector.waitForEntries(count: 1)
 
     // Request should still be logged
     let entries = await collector.getEntries()
